@@ -1,7 +1,11 @@
 package nuber.students;
 
 import java.util.HashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * The core Dispatch class that instantiates and manages everything for Nuber
@@ -17,6 +21,21 @@ public class NuberDispatch {
 	private final int MAX_DRIVERS = 999;
 	
 	private boolean logEvents = false;
+
+	// Thread-safe queue to store idle drivers
+    private ConcurrentLinkedQueue<Driver> driverQueue = new ConcurrentLinkedQueue<>();
+    
+    // Map of region names and max simultaneous bookings they can handle
+    private HashMap<String, Integer> regionInfo;
+    
+    // Counter for bookings awaiting drivers
+    private AtomicInteger bookingsAwaitingDriver = new AtomicInteger(0);
+
+    // Lock for shutting down regions safely
+    private ReentrantLock shutdownLock = new ReentrantLock();
+    
+    // Track if the system is in shutdown mode
+    private volatile boolean shutdown = false;
 	
 	/**
 	 * Creates a new dispatch objects and instantiates the required regions and any other objects required.
@@ -27,6 +46,19 @@ public class NuberDispatch {
 	 */
 	public NuberDispatch(HashMap<String, Integer> regionInfo, boolean logEvents)
 	{
+		this.logEvents = logEvents;
+        this.regionInfo = new HashMap<>();
+        this.driverQueue = new ConcurrentLinkedQueue<>();
+        this.bookingsAwaitingDriver = new AtomicInteger(0);
+        
+        // Initialize regions 
+		for (HashMap.Entry<String, Integer> entry : regionInfo.entrySet()) {
+            String regionName = entry.getKey();
+            int maxSimultaneousJobs = entry.getValue();
+
+            // Initialize a NuberRegion using the constructor
+            NuberRegion region = new NuberRegion(this, regionName, maxSimultaneousJobs);
+		}
 	}
 	
 	/**
@@ -39,6 +71,11 @@ public class NuberDispatch {
 	 */
 	public boolean addDriver(Driver newDriver)
 	{
+		if (driverQueue.size() >= MAX_DRIVERS) {
+            return false; // Queue is full
+        }
+        driverQueue.add(newDriver);
+        return true;
 	}
 	
 	/**
@@ -48,8 +85,8 @@ public class NuberDispatch {
 	 * 
 	 * @return A driver that has been removed from the queue
 	 */
-	public Driver getDriver()
-	{
+	public Driver getDriver(){
+		return driverQueue.poll();
 	}
 
 	/**
@@ -61,11 +98,8 @@ public class NuberDispatch {
 	 * @param message The message to show
 	 */
 	public void logEvent(Booking booking, String message) {
-		
 		if (!logEvents) return;
-		
 		System.out.println(booking + ": " + message);
-		
 	}
 
 	/**
@@ -80,7 +114,47 @@ public class NuberDispatch {
 	 * @return returns a Future<BookingResult> object
 	 */
 	public Future<BookingResult> bookPassenger(Passenger passenger, String region) {
-	}
+		if (shutdown) {
+			return CompletableFuture.completedFuture(null); // Return null if the system is shutting down
+		}
+	
+		// Increment the counter for bookings awaiting a driver
+		bookingsAwaitingDriver.incrementAndGet();
+
+		//NuberRegion nuberRegion = regionInfo.get(region);
+        //if (nuberRegion == null) {
+        //    bookingsAwaitingDriver.decrementAndGet(); // Decrement if the region is invalid
+         //   return CompletableFuture.completedFuture(null); // Return null if the region is not found
+        //}
+	
+		// Process the booking asynchronously
+		return CompletableFuture.supplyAsync(() -> {
+			try {
+				// Create a new booking instance with the dispatch and passenger
+				Booking booking = new Booking(this, passenger);
+				
+				// Call the booking process, which handles driver allocation and trip completion
+				BookingResult result = booking.call(); 
+	
+				if (result == null) {
+					// If no result is returned, decrement the counter
+					bookingsAwaitingDriver.decrementAndGet();
+					return null; // No result indicates no available driver or interrupted process
+				}
+	
+				// Decrement awaiting bookings counter after successful processing
+				bookingsAwaitingDriver.decrementAndGet();
+	
+				// Return the booking result
+				return result;
+			} catch (Exception e) {
+				// In case of an error, ensure the awaiting bookings counter is decremented
+				bookingsAwaitingDriver.decrementAndGet();
+				System.out.println("book passenger Error");
+				return null; // Return null if an error occurs
+			}
+		});
+    }
 
 	/**
 	 * Gets the number of non-completed bookings that are awaiting a driver from dispatch
@@ -90,13 +164,19 @@ public class NuberDispatch {
 	 * @return Number of bookings awaiting driver, across ALL regions
 	 */
 	public int getBookingsAwaitingDriver()
-	{
+	{	return bookingsAwaitingDriver.get();
 	}
 	
 	/**
 	 * Tells all regions to finish existing bookings already allocated, and stop accepting new bookings
 	 */
 	public void shutdown() {
+		shutdownLock.lock();
+        try {
+            shutdown = true;
+        } finally {
+            shutdownLock.unlock();
+        }
 	}
 
 }

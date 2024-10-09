@@ -21,4 +21,7 @@ public abstract class Person
 		return SAMPLE_NAMES[nextNameIndex];
 	}
 
+	public String getName(){
+		return name;
+	}
 }

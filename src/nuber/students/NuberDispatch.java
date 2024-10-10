@@ -51,14 +51,6 @@ public class NuberDispatch {
         this.driverQueue = new ConcurrentLinkedQueue<>();
         this.bookingsAwaitingDriver = new AtomicInteger(0);
         
-        // Initialize regions 
-		for (HashMap.Entry<String, Integer> entry : regionInfo.entrySet()) {
-            String regionName = entry.getKey();
-            int maxSimultaneousJobs = entry.getValue();
-
-            // Initialize a NuberRegion using the constructor
-            NuberRegion region = new NuberRegion(this, regionName, maxSimultaneousJobs);
-		}
 	}
 	
 	/**
@@ -121,11 +113,11 @@ public class NuberDispatch {
 		// Increment the counter for bookings awaiting a driver
 		bookingsAwaitingDriver.incrementAndGet();
 
-		//NuberRegion nuberRegion = regionInfo.get(region);
-        //if (nuberRegion == null) {
-        //    bookingsAwaitingDriver.decrementAndGet(); // Decrement if the region is invalid
-         //   return CompletableFuture.completedFuture(null); // Return null if the region is not found
-        //}
+		Integer nuberRegion = regionInfo.get(region);
+        if (nuberRegion == null) {
+            bookingsAwaitingDriver.decrementAndGet(); // Decrement if the region is invalid
+            return CompletableFuture.completedFuture(null); // Return null if the region is not found
+        }
 	
 		// Process the booking asynchronously
 		return CompletableFuture.supplyAsync(() -> {

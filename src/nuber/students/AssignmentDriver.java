@@ -12,9 +12,7 @@ public class AssignmentDriver {
 		boolean logEvents = true;
 		
 		HashMap<String, Integer> testRegions = new HashMap<String, Integer>();
-		testRegions.put("Test Region", 50);
-		
-
+		testRegions.put("North Region", 50);
 		
 		/**
 		 * This driver has a number of different sections that you can uncomment as you progress through the assignment
@@ -42,19 +40,17 @@ public class AssignmentDriver {
 		Booking b2 = new Booking(dispatch, testPassenger);
 		
 		//test creating a new region
-		NuberRegion region = new NuberRegion(dispatch, "Test Region", 10);
+		NuberRegion region = new NuberRegion(dispatch, "North Region", testRegions.get("North Region"));
 
 		//test adding a driver to dispatch
 		dispatch.addDriver(testDriver);
 		
 		//test booking a single passenger
-		dispatch.bookPassenger(testPassenger, "Test Region");
+		dispatch.bookPassenger(testPassenger, "North Region");
 
 		//shutdown the dispatch when it's done
 		dispatch.shutdown();
-
-		
-		
+		System.out.println("done testing");
 		
 		
 		//create NuberDispatch for given regions and max simultaneous jobs per region
@@ -64,7 +60,7 @@ public class AssignmentDriver {
 		regions.put("North", 50);
 		regions.put("South", 50);
 		
-		//new Simulation(regions, 1, 10, 1000, logEvents);
+		new Simulation(regions, 1, 10, 1000, logEvents);
 		//new Simulation(regions, 5, 10, 1000, logEvents);
 		//new Simulation(regions, 10, 10, 1000, logEvents);
 		//new Simulation(regions, 10, 100, 1000, logEvents);

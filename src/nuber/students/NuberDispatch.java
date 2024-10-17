@@ -1,6 +1,7 @@
 package nuber.students;
 
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Future;
@@ -27,6 +28,7 @@ public class NuberDispatch {
     
     // Map of region names and max simultaneous bookings they can handle
     private HashMap<String, Integer> regionInfo;
+	private HashMap<String, NuberRegion> regionInfos;
     
     // Counter for bookings awaiting drivers
     private AtomicInteger bookingsAwaitingDriver = new AtomicInteger(0);
@@ -50,7 +52,12 @@ public class NuberDispatch {
         this.regionInfo = new HashMap<>();
         this.driverQueue = new ConcurrentLinkedQueue<>();
         this.bookingsAwaitingDriver = new AtomicInteger(0);
-        
+		this.regionInfos = new HashMap<String, NuberRegion>();
+        for (Map.Entry<String, Integer> entry : regionInfo.entrySet()) {
+            String regionName = entry.getKey();
+            int maxSimultaneousJobs = entry.getValue();
+            this.regionInfos.put(regionName, new NuberRegion(this, regionName, maxSimultaneousJobs));
+		}
 	}
 	
 	/**
@@ -107,7 +114,7 @@ public class NuberDispatch {
 	 */
 	public Future<BookingResult> bookPassenger(Passenger passenger, String region) {
 		if (shutdown) {
-			return CompletableFuture.completedFuture(null); // Return null if the system is shutting down
+			return null; // Return null if the system is shutting down
 		}
 	
 		// Increment the counter for bookings awaiting a driver
@@ -166,6 +173,11 @@ public class NuberDispatch {
 		shutdownLock.lock();
         try {
             shutdown = true;
+			for (Map.Entry<String, Integer> entry : regionInfo.entrySet()) {
+				String regionName = entry.getKey();
+            	NuberRegion region = regionInfos.get(regionName);
+            region.shutdown();
+		}
         } finally {
             shutdownLock.unlock();
         }

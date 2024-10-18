@@ -26,7 +26,7 @@ public class NuberRegion {
     private final int maxSimultaneousJobs;
     private final ConcurrentLinkedQueue<Passenger> waitingPassengers;
     private final AtomicInteger activeBookings;
-    private boolean shutdown;
+    public boolean shutdown;
 	/**
 	 * Creates a new Nuber region
 	 * 

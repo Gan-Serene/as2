@@ -115,11 +115,8 @@ public class NuberDispatch {
 		NuberRegion PassengerRegion = regionInfos.get(region);
 
 		if(PassengerRegion.shutdown){
-			System.out.println("region is shut down now");
 			this.logEvent(null,"Rejected booking");
 			return null; 
-		}else{
-			System.out.println("region still active");
 		}
 	
 		// Increment the counter for bookings awaiting a driver

@@ -78,16 +78,19 @@ public class Booking {
 
         // 3. Driver picks up the passenger
         driver.pickUpPassenger(passenger);
+		dispatch.logEvent(this,"Starting, on way to passenger");
 
         // 3. Driver drives to the destination
         driver.driveToDestination();
-
+		dispatch.logEvent(this,"Collected passenger, on way to destination");
+		
         // 4. Record the end time when the trip is completed
         endTime = System.currentTimeMillis();
         long tripDuration = endTime - startTime; // Calculate trip duration in milliseconds
-
+		
         // 5. Return the driver to the dispatch pool
         dispatch.addDriver(driver);
+		dispatch.logEvent(this,"At destination, driver is now free");
 
         // 6. Create and return a BookingResult with all the details
         return new BookingResult(bookingID, passenger, driver, tripDuration);

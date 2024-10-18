@@ -172,12 +172,15 @@ public class NuberDispatch {
 	public void shutdown() {
 		shutdownLock.lock();
         try {
-            shutdown = true;
-			for (Map.Entry<String, Integer> entry : regionInfo.entrySet()) {
-				String regionName = entry.getKey();
-            	NuberRegion region = regionInfos.get(regionName);
-            region.shutdown();
-		}
+			shutdown = true;
+            // Notify regions to shut down
+            for (NuberRegion region : regionInfos.values()) {
+                region.shutdown();
+            }
+            // Log shutdown event
+            if (logEvents) {
+                this.logEvent(null, "NuberDispatch system is shutting down");
+            }
         } finally {
             shutdownLock.unlock();
         }

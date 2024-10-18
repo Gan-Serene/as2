@@ -35,9 +35,6 @@ public class NuberDispatch {
 
     // Lock for shutting down regions safely
     private ReentrantLock shutdownLock = new ReentrantLock();
-    
-    // Track if the system is in shutdown mode
-    private volatile boolean shutdown = false;
 	
 	/**
 	 * Creates a new dispatch objects and instantiates the required regions and any other objects required.
@@ -71,6 +68,7 @@ public class NuberDispatch {
 	public boolean addDriver(Driver newDriver)
 	{
 		if (driverQueue.size() >= MAX_DRIVERS) {
+			System.out.println("Queue is full");
             return false; // Queue is full
         }
         driverQueue.add(newDriver);
@@ -113,27 +111,32 @@ public class NuberDispatch {
 	 * @return returns a Future<BookingResult> object
 	 */
 	public Future<BookingResult> bookPassenger(Passenger passenger, String region) {
-		if (shutdown) {
-			return null; // Return null if the system is shutting down
+		this.logEvent(null,"booking created");
+		NuberRegion PassengerRegion = regionInfos.get(region);
+
+		if(PassengerRegion.shutdown){
+			System.out.println("region is shut down now");
+			this.logEvent(null,"Rejected booking");
+			return null; 
+		}else{
+			System.out.println("region still active");
 		}
 	
 		// Increment the counter for bookings awaiting a driver
 		bookingsAwaitingDriver.incrementAndGet();
 
-		Integer nuberRegion = regionInfo.get(region);
-        if (nuberRegion == null) {
-            bookingsAwaitingDriver.decrementAndGet(); // Decrement if the region is invalid
-            return CompletableFuture.completedFuture(null); // Return null if the region is not found
-        }
+		
 	
 		// Process the booking asynchronously
 		return CompletableFuture.supplyAsync(() -> {
 			try {
 				// Create a new booking instance with the dispatch and passenger
 				Booking booking = new Booking(this, passenger);
-				
+
+				this.logEvent(booking,"start booking, getting driver");
 				// Call the booking process, which handles driver allocation and trip completion
 				BookingResult result = booking.call(); 
+				
 	
 				if (result == null) {
 					// If no result is returned, decrement the counter
@@ -172,7 +175,6 @@ public class NuberDispatch {
 	public void shutdown() {
 		shutdownLock.lock();
         try {
-			shutdown = true;
             // Notify regions to shut down
             for (NuberRegion region : regionInfos.values()) {
                 region.shutdown();

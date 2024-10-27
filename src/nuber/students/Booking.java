@@ -79,6 +79,8 @@ public class Booking {
         // 3. Driver picks up the passenger
         driver.pickUpPassenger(passenger);
 		dispatch.logEvent(this,"Starting, on way to passenger");
+		// Decrement awaiting bookings counter after get driver
+		dispatch.decrementBookingsAwaitingDriver();
 
         // 3. Driver drives to the destination
         driver.driveToDestination();

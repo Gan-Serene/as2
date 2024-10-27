@@ -49,12 +49,17 @@ public class NuberDispatch {
         this.regionInfo = new HashMap<>();
         this.driverQueue = new ConcurrentLinkedQueue<>();
         this.bookingsAwaitingDriver = new AtomicInteger(0);
+
+		System.out.println("Creating Nuber Dispatch");
 		this.regionInfos = new HashMap<String, NuberRegion>();
+		System.out.println("Creating " + regionInfo.size()+" regions");
         for (Map.Entry<String, Integer> entry : regionInfo.entrySet()) {
             String regionName = entry.getKey();
             int maxSimultaneousJobs = entry.getValue();
             this.regionInfos.put(regionName, new NuberRegion(this, regionName, maxSimultaneousJobs));
+			System.out.println("Creating Nuber region for " + regionName);
 		}
+		System.out.println("Done creating " + regionInfos.size()+" regions");
 	}
 	
 	/**
@@ -111,7 +116,7 @@ public class NuberDispatch {
 	 * @return returns a Future<BookingResult> object
 	 */
 	public Future<BookingResult> bookPassenger(Passenger passenger, String region) {
-		this.logEvent(null,"booking created");
+		
 		NuberRegion PassengerRegion = regionInfos.get(region);
 
 		if(PassengerRegion.shutdown){
@@ -121,29 +126,22 @@ public class NuberDispatch {
 	
 		// Increment the counter for bookings awaiting a driver
 		bookingsAwaitingDriver.incrementAndGet();
-
-		
 	
 		// Process the booking asynchronously
 		return CompletableFuture.supplyAsync(() -> {
 			try {
 				// Create a new booking instance with the dispatch and passenger
 				Booking booking = new Booking(this, passenger);
-
-				this.logEvent(booking,"start booking, getting driver");
+				this.logEvent(booking,"Creating booking");
+				this.logEvent(booking,"Start booking, getting driver");
 				// Call the booking process, which handles driver allocation and trip completion
-				BookingResult result = booking.call(); 
-				
+				BookingResult result = booking.call(); 	
 	
 				if (result == null) {
 					// If no result is returned, decrement the counter
 					bookingsAwaitingDriver.decrementAndGet();
 					return null; // No result indicates no available driver or interrupted process
-				}
-	
-				// Decrement awaiting bookings counter after successful processing
-				bookingsAwaitingDriver.decrementAndGet();
-	
+				}				
 				// Return the booking result
 				return result;
 			} catch (Exception e) {
@@ -164,6 +162,11 @@ public class NuberDispatch {
 	 */
 	public int getBookingsAwaitingDriver()
 	{	return bookingsAwaitingDriver.get();
+	}
+
+	public void decrementBookingsAwaitingDriver()
+	{	
+		bookingsAwaitingDriver.decrementAndGet();
 	}
 	
 	/**

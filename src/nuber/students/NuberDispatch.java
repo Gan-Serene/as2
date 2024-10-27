@@ -119,11 +119,13 @@ public class NuberDispatch {
 		
 		NuberRegion PassengerRegion = regionInfos.get(region);
 
-		if(PassengerRegion.shutdown){
-			this.logEvent(null,"Rejected booking");
-			return null; 
+		// Synchronized Access to Shared Resources
+		synchronized (PassengerRegion) {
+			if (PassengerRegion.shutdown) {
+				this.logEvent(null, "Rejected booking");
+				return null;
+			}
 		}
-	
 		// Increment the counter for bookings awaiting a driver
 		bookingsAwaitingDriver.incrementAndGet();
 	

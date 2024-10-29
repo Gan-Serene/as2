@@ -13,11 +13,18 @@ public class NuberDispatch {
     private final int MAX_DRIVERS = 999;
     private final boolean logEvents;
 
+	// Drivers are placed in idle driver queue 
     private final ConcurrentLinkedQueue<Driver> driverQueue;
+
+	// Save region info
     private final HashMap<String, Integer> regionInfo;
     private final HashMap<String, NuberRegion> regionInfos;
-    private final AtomicInteger bookingsAwaitingDriver;
-    private final ReentrantLock shutdownLock = new ReentrantLock();
+
+    // synchronised Incrementing and Decrementing Booking Counts, thread-safe because using AtomicInteger
+    private final AtomicInteger bookingsAwaitingDriver; 
+
+	// synchronous lock
+	private final ReentrantLock shutdownLock = new ReentrantLock();
 
     public NuberDispatch(HashMap<String, Integer> regionInfo, boolean logEvents) {
         this.logEvents = logEvents;
@@ -27,7 +34,7 @@ public class NuberDispatch {
         this.regionInfos = new HashMap<>();
 		System.out.println("Creating Nuber Dispatch");
 		
-		// save nuber Region in Hash Map
+		// create and save nuber Region in Hash Map
         for (Map.Entry<String, Integer> entry : regionInfo.entrySet()) {
             String regionName = entry.getKey();
             int maxSimultaneousJobs = entry.getValue();

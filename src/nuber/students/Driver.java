@@ -19,6 +19,7 @@ public class Driver extends Person {
 	{
 		this.passenger = newPassenger;
 		try {
+			// sleeps the thread for between 0-maxDelay milliseconds.
 			int delay = (int) (Math.random() * maxSleep);
 			Thread.sleep(delay);
 		} catch (InterruptedException e) {
@@ -36,6 +37,7 @@ public class Driver extends Person {
 		if (passenger != null) {
 			int travelTime = passenger.getTravelTime();
 			try {
+				// Sleeps the thread for the amount of time returned by the current
 				Thread.sleep(travelTime);
 			} catch (InterruptedException e) {
 				System.out.println("Drive interrupted.");
@@ -44,5 +46,5 @@ public class Driver extends Person {
 			System.out.println("No passenger to drive.");
 		}
 	}
-	
+	//The Driver class sleeps as expected for driving to passenger, and delivering passenger
 }

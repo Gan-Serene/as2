@@ -42,7 +42,7 @@ public class Booking {
 	{
 		this.dispatch = dispatch;
         this.passenger = passenger;
-        this.bookingID = idCounter.getAndIncrement(); // Assign unique booking ID
+        this.bookingID = idCounter.getAndIncrement(); // Unique sequentially Booking IDs are generated correctly and handle cross-thread access
         this.startTime = System.currentTimeMillis();  // Record booking creation time
 	}
 	
@@ -77,6 +77,7 @@ public class Booking {
         }
 
         // 3. Driver picks up the passenger
+		// Program confirms and runs within the provided driver
         driver.pickUpPassenger(passenger);
 		dispatch.logEvent(this,"Starting, on way to passenger");
 		// Decrement awaiting bookings counter after get driver
@@ -91,10 +92,12 @@ public class Booking {
         long tripDuration = endTime - startTime; // Calculate trip duration in milliseconds
 		
         // 5. Return the driver to the dispatch pool
+		// Drivers are placed back into the idle driver queue once a booking is completed
         dispatch.addDriver(driver);
 		dispatch.logEvent(this,"At destination, driver is now free");
 
-        // 6. Create and return a BookingResult with all the details
+        // 6. Create and return a BookingResult with all the details 
+		// Bookings provide a BookingResult when complete
         return new BookingResult(bookingID, passenger, driver, tripDuration);
 	}
 	

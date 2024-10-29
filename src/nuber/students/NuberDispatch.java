@@ -25,8 +25,9 @@ public class NuberDispatch {
         this.driverQueue = new ConcurrentLinkedQueue<>();
         this.bookingsAwaitingDriver = new AtomicInteger(0);
         this.regionInfos = new HashMap<>();
-
-        System.out.println("Creating Nuber Dispatch");
+		System.out.println("Creating Nuber Dispatch");
+		
+		// save nuber Region in Hash Map
         for (Map.Entry<String, Integer> entry : regionInfo.entrySet()) {
             String regionName = entry.getKey();
             int maxSimultaneousJobs = entry.getValue();
@@ -50,6 +51,7 @@ public class NuberDispatch {
 			System.out.println("Queue is full");
             return false; // Queue is full
         }
+		//Adds drivers to a queue of idle driver.
         driverQueue.add(newDriver);
         return true;
 	}
@@ -78,56 +80,83 @@ public class NuberDispatch {
 		System.out.println(booking + ": " + message);
 	}
 
+	/**
+	 * Books a given passenger into a given Nuber region.
+	 * 
+	 * Once a passenger is booked, the getBookingsAwaitingDriver() should be returning one higher.
+	 * 
+	 * If the region has been asked to shutdown, the booking should be rejected, and null returned.
+	 * 
+	 * @param passenger The passenger to book
+	 * @param region The region to book them into
+	 * @return returns a Future<BookingResult> object
+	 */
     public Future<BookingResult> bookPassenger(Passenger passenger, String region) {
-        NuberRegion nuberRegion = regionInfos.get(region);
-
-        if (nuberRegion == null || nuberRegion.isShutdown()) {
-            logEvent(null, "Rejected booking: Region " + region + " is shut down or does not exist.");
-            return null;
-        }
-
-        // Simultaneous live bookings are limited to the maximum allowed for a given region
-        if (!nuberRegion.canAcceptBooking()) {
-            logEvent(null, "Rejected booking: Region " + region + " has reached its maximum capacity.");
-            
-			return CompletableFuture.completedFuture(null);
-        }
-
-        bookingsAwaitingDriver.incrementAndGet();
-        nuberRegion.incrementBookingCount();
-
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                Booking booking = new Booking(this, passenger);
-                logEvent(booking, "Creating booking");
-                logEvent(booking, "Start booking, getting driver");
-
-                BookingResult result = booking.call();
-
-                if (result == null) {
-                    bookingsAwaitingDriver.decrementAndGet();
-                    nuberRegion.decrementBookingCount();
-                    return null;
-                }
-                return result;
-            } catch (Exception e) {
-                bookingsAwaitingDriver.decrementAndGet();
-                nuberRegion.decrementBookingCount();
-                System.out.println("Error in booking passenger: " + e.getMessage());
-                return null;
-            }
-        });
-    }
+    
+		// Get the region from the map of regions
+		NuberRegion nuberRegion = regionInfos.get(region);
+	
+		// Check if the region does not exist or has been shut down
+		if (nuberRegion == null || nuberRegion.isShutdown()) {
+			logEvent(null, "Rejected booking: Region " + region + " is shut down or does not exist.");
+			return null;  // Return null as no booking can be made
+		}
+	
+		// Check if the region has reached its maximum booking capacity
+		if (!nuberRegion.canAcceptBooking()) {
+			logEvent(null, "Rejected booking: Region " + region + " has reached its maximum capacity.");
+			return CompletableFuture.completedFuture(null);  // Return a completed Future with null
+		}
+	
+		// Increment the count of bookings waiting for a driver
+		bookingsAwaitingDriver.incrementAndGet();
+		// Increase the active booking count in the region
+		nuberRegion.incrementBookingCount();
+	
+		// Process the booking asynchronously
+		return CompletableFuture.supplyAsync(() -> {
+			try {
+				// Create a new booking with the dispatch and passenger details
+				Booking booking = new Booking(this, passenger);
+				logEvent(booking, "Creating booking"); // Log booking creation
+				logEvent(booking, "Start booking, getting driver"); // Log that booking has started
+	
+				// Call the booking process, which handles driver assignment and trip completion
+				BookingResult result = booking.call();
+	
+				// Check if the booking result is null (indicating failure or interruption)
+				if (result == null) {
+					// Decrement the count of bookings awaiting a driver
+					bookingsAwaitingDriver.decrementAndGet();
+					// Decrement the active booking count in the region
+					nuberRegion.decrementBookingCount();
+					return null; // Return null if booking result is unavailable
+				}
+				// Return the booking result upon successful completion
+				return result;
+				
+			} catch (Exception e) {
+				// In case of an error, decrement the counts to ensure correct tracking
+				bookingsAwaitingDriver.decrementAndGet();
+				nuberRegion.decrementBookingCount();
+				System.out.println("Error in booking passenger: " + e.getMessage()); // Log error
+				return null;  // Return null if an error occurs
+			}
+		});
+	}
+	
 
 	//Dispatch can accurately report on the number of bookings awaiting a driver
     public int getBookingsAwaitingDriver() {
         return bookingsAwaitingDriver.get();
     }
 
+	// decrease number of booking awaiting driver
     public void decrementBookingsAwaitingDriver() {
         bookingsAwaitingDriver.decrementAndGet();
     }
 
+	// all region shutdown
     public void shutdown() {
         shutdownLock.lock();
         try {

@@ -8,61 +8,35 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
-/**
- * The core Dispatch class that instantiates and manages everything for Nuber
- * 
- * @author james
- *
- */
 public class NuberDispatch {
 
-	/**
-	 * The maximum number of idle drivers that can be awaiting a booking 
-	 */
-	private final int MAX_DRIVERS = 999;
-	
-	private boolean logEvents = false;
+    private final int MAX_DRIVERS = 999;
+    private final boolean logEvents;
 
-	// Thread-safe queue to store idle drivers
-    private ConcurrentLinkedQueue<Driver> driverQueue = new ConcurrentLinkedQueue<>();
-    
-    // Map of region names and max simultaneous bookings they can handle
-    private HashMap<String, Integer> regionInfo;
-	private HashMap<String, NuberRegion> regionInfos;
-    
-    // Counter for bookings awaiting drivers
-    private AtomicInteger bookingsAwaitingDriver = new AtomicInteger(0);
+    private final ConcurrentLinkedQueue<Driver> driverQueue;
+    private final HashMap<String, Integer> regionInfo;
+    private final HashMap<String, NuberRegion> regionInfos;
+    private final AtomicInteger bookingsAwaitingDriver;
+    private final ReentrantLock shutdownLock = new ReentrantLock();
 
-    // Lock for shutting down regions safely
-    private ReentrantLock shutdownLock = new ReentrantLock();
-	
-	/**
-	 * Creates a new dispatch objects and instantiates the required regions and any other objects required.
-	 * It should be able to handle a variable number of regions based on the HashMap provided.
-	 * 
-	 * @param regionInfo Map of region names and the max simultaneous bookings they can handle
-	 * @param logEvents Whether logEvent should print out events passed to it
-	 */
-	public NuberDispatch(HashMap<String, Integer> regionInfo, boolean logEvents)
-	{
-		this.logEvents = logEvents;
-        this.regionInfo = new HashMap<>();
+    public NuberDispatch(HashMap<String, Integer> regionInfo, boolean logEvents) {
+        this.logEvents = logEvents;
+        this.regionInfo = regionInfo;
         this.driverQueue = new ConcurrentLinkedQueue<>();
         this.bookingsAwaitingDriver = new AtomicInteger(0);
+        this.regionInfos = new HashMap<>();
 
-		System.out.println("Creating Nuber Dispatch");
-		this.regionInfos = new HashMap<String, NuberRegion>();
-		System.out.println("Creating " + regionInfo.size()+" regions");
+        System.out.println("Creating Nuber Dispatch");
         for (Map.Entry<String, Integer> entry : regionInfo.entrySet()) {
             String regionName = entry.getKey();
             int maxSimultaneousJobs = entry.getValue();
-            this.regionInfos.put(regionName, new NuberRegion(this, regionName, maxSimultaneousJobs));
-			System.out.println("Creating Nuber region for " + regionName);
-		}
-		System.out.println("Done creating " + regionInfos.size()+" regions");
-	}
-	
-	/**
+            regionInfos.put(regionName, new NuberRegion(this, regionName, maxSimultaneousJobs));
+            System.out.println("Creating Nuber region for " + regionName);
+        }
+        System.out.println("Done creating " + regionInfos.size() + " regions");
+    }
+
+    /**
 	 * Adds drivers to a queue of idle driver.
 	 *  
 	 * Must be able to have drivers added from multiple threads.
@@ -104,90 +78,65 @@ public class NuberDispatch {
 		System.out.println(booking + ": " + message);
 	}
 
-	/**
-	 * Books a given passenger into a given Nuber region.
-	 * 
-	 * Once a passenger is booked, the getBookingsAwaitingDriver() should be returning one higher.
-	 * 
-	 * If the region has been asked to shutdown, the booking should be rejected, and null returned.
-	 * 
-	 * @param passenger The passenger to book
-	 * @param region The region to book them into
-	 * @return returns a Future<BookingResult> object
-	 */
-	public Future<BookingResult> bookPassenger(Passenger passenger, String region) {
-		
-		NuberRegion PassengerRegion = regionInfos.get(region);
+    public Future<BookingResult> bookPassenger(Passenger passenger, String region) {
+        NuberRegion nuberRegion = regionInfos.get(region);
 
-		// Synchronized Access to Shared Resources
-		synchronized (PassengerRegion) {
-			if (PassengerRegion.shutdown) {
-				this.logEvent(null, "Rejected booking");
-				return null;
-			}
-		}
-		// Increment the counter for bookings awaiting a driver
-		bookingsAwaitingDriver.incrementAndGet();
-	
-		// Process the booking asynchronously
-		return CompletableFuture.supplyAsync(() -> {
-			try {
-				// Create a new booking instance with the dispatch and passenger
-				Booking booking = new Booking(this, passenger);
-				this.logEvent(booking,"Creating booking");
-				this.logEvent(booking,"Start booking, getting driver");
-				// Call the booking process, which handles driver allocation and trip completion
-				BookingResult result = booking.call(); 	
-	
-				if (result == null) {
-					// If no result is returned, decrement the counter
-					bookingsAwaitingDriver.decrementAndGet();
-					return null; // No result indicates no available driver or interrupted process
-				}				
-				// Return the booking result
-				return result;
-			} catch (Exception e) {
-				// In case of an error, ensure the awaiting bookings counter is decremented
-				bookingsAwaitingDriver.decrementAndGet();
-				System.out.println("book passenger Error");
-				return null; // Return null if an error occurs
-			}
-		});
+        if (nuberRegion == null || nuberRegion.isShutdown()) {
+            logEvent(null, "Rejected booking: Region " + region + " is shut down or does not exist.");
+            return null;
+        }
+
+        // Simultaneous live bookings are limited to the maximum allowed for a given region
+        if (!nuberRegion.canAcceptBooking()) {
+            logEvent(null, "Rejected booking: Region " + region + " has reached its maximum capacity.");
+            
+			return CompletableFuture.completedFuture(null);
+        }
+
+        bookingsAwaitingDriver.incrementAndGet();
+        nuberRegion.incrementBookingCount();
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Booking booking = new Booking(this, passenger);
+                logEvent(booking, "Creating booking");
+                logEvent(booking, "Start booking, getting driver");
+
+                BookingResult result = booking.call();
+
+                if (result == null) {
+                    bookingsAwaitingDriver.decrementAndGet();
+                    nuberRegion.decrementBookingCount();
+                    return null;
+                }
+                return result;
+            } catch (Exception e) {
+                bookingsAwaitingDriver.decrementAndGet();
+                nuberRegion.decrementBookingCount();
+                System.out.println("Error in booking passenger: " + e.getMessage());
+                return null;
+            }
+        });
     }
 
-	/**
-	 * Gets the number of non-completed bookings that are awaiting a driver from dispatch
-	 * 
-	 * Once a driver is given to a booking, the value in this counter should be reduced by one
-	 * 
-	 * @return Number of bookings awaiting driver, across ALL regions
-	 */
-	public int getBookingsAwaitingDriver()
-	{	return bookingsAwaitingDriver.get();
-	}
+	//Dispatch can accurately report on the number of bookings awaiting a driver
+    public int getBookingsAwaitingDriver() {
+        return bookingsAwaitingDriver.get();
+    }
 
-	public void decrementBookingsAwaitingDriver()
-	{	
-		bookingsAwaitingDriver.decrementAndGet();
-	}
-	
-	/**
-	 * Tells all regions to finish existing bookings already allocated, and stop accepting new bookings
-	 */
-	public void shutdown() {
-		shutdownLock.lock();
+    public void decrementBookingsAwaitingDriver() {
+        bookingsAwaitingDriver.decrementAndGet();
+    }
+
+    public void shutdown() {
+        shutdownLock.lock();
         try {
-            // Notify regions to shut down
             for (NuberRegion region : regionInfos.values()) {
                 region.shutdown();
             }
-            // Log shutdown event
-            if (logEvents) {
-                this.logEvent(null, "NuberDispatch system is shutting down");
-            }
+            logEvent(null, "NuberDispatch system is shutting down");
         } finally {
             shutdownLock.unlock();
         }
-	}
-
+    }
 }
